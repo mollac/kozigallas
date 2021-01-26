@@ -83,7 +83,7 @@ def main():
         for l in list_of_jobs:
             st.markdown(f'***{l[1]}*** - {l[2]}')
             st.markdown(f'Határidő: *{l[0]}* Munkavégzés helye: *{l[3].replace(megye + " ,","")}*')
-            st.markdown(f'<a href="{l[7]}" target="_blank">Megnézem</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="{l[7]}" target="_blank">Megnézem</a><hr/>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
