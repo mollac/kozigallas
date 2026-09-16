@@ -1,0 +1,6 @@
+aiohttp==3.13.3
+pandas==3.0.5
+selectolax==0.3.28
+textual==8.2.8
+tqdm==4.67.1
+xlsxwriter==3.2.9
