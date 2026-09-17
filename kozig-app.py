@@ -348,6 +348,13 @@ class KozigApp(App):
         text-style: bold;
     }
 
+    /* Az aktuálisan rendezett oszlop fejlécének kiemelése */
+    DataTable > .datatable--header .sorted-column {
+        background: #334155;
+        color: #ffffff;
+        text-style: bold;
+    }
+
     DataTable > .datatable--cursor {
         background: #0284c7;
         color: #ffffff;
@@ -508,6 +515,48 @@ class KozigApp(App):
         if w["show_megye"]:
             table.add_column("Megye / Térség", width=w["megye"], key="col_megye")
 
+        self.highlight_sorted_column()
+
+    def highlight_sorted_column(self) -> None:
+        """Világosabb háttérrel kiemeli az aktuálisan rendezett oszlop fejlécét."""
+        table = self.query_one(DataTable)
+
+        # Először minden fejléc visszaállítása az alap háttérre.
+        for column_key in ("col_mit", "col_kinel", "col_hol", "col_meddig", "col_megye"):
+            try:
+                table.get_column(column_key).label.stylize = None
+            except Exception:
+                pass
+
+        # Textual verziók között eltérhet a fejléc belső objektumának API-ja,
+        # ezért a biztos megoldás a fejléc cellájának CSS class alapú jelölése.
+        try:
+            header = table.query_one(".datatable--header")
+            for child in header.query(".datatable--header-cell"):
+                child.remove_class("sorted-column")
+        except Exception:
+            pass
+
+        # Az aktuális oszlop fejlécét jelöljük.
+        column_map = {
+            "mit": "col_mit",
+            "kinél": "col_kinel",
+            "hol": "col_hol",
+            "meddig": "col_meddig",
+            "megye": "col_megye",
+        }
+        active_key = column_map.get(self.sort_field)
+        if not active_key:
+            return
+
+        try:
+            header = table.query_one(".datatable--header")
+            for child in header.query(".datatable--header-cell"):
+                if getattr(child, "column_key", None) == active_key:
+                    child.add_class("sorted-column")
+        except Exception:
+            pass
+
     def on_resize(self, event: events.Resize) -> None:
         """Ablak átméretezésekor újraszámolja az oszlopszélességeket a kilógás megakadályozására."""
         new_width = event.size.width
@@ -568,14 +617,12 @@ class KozigApp(App):
             county_filtered = list(self.all_jobs)
 
         # 2. Szöveges keresési szűrő (ékezet-független)
+        # A keresés mindig az éppen rendezett oszlopban történik.
         filter_query = strip_accents(self.search_filter.strip())
         if filter_query:
             self.displayed_jobs = [
                 j for j in county_filtered
-                if filter_query in strip_accents(j.get("mit", ""))
-                or filter_query in strip_accents(j.get("kinél", ""))
-                or filter_query in strip_accents(j.get("hol", ""))
-                or filter_query in strip_accents(j.get("megye", ""))
+                if filter_query in strip_accents(j.get(self.sort_field, ""))
             ]
         else:
             self.displayed_jobs = county_filtered
@@ -638,6 +685,7 @@ class KozigApp(App):
             self.sort_field = "mit"
             self.sort_descending = False
         self.apply_filter_and_sort()
+        self.highlight_sorted_column()
         self.notify(f"Rendezve Pozíció szerint ({'Csökkenő' if self.sort_descending else 'Növekvő'})", timeout=2)
 
     def action_sort_kinel(self) -> None:
@@ -648,6 +696,7 @@ class KozigApp(App):
             self.sort_field = "kinél"
             self.sort_descending = False
         self.apply_filter_and_sort()
+        self.highlight_sorted_column()
         self.notify(f"Rendezve Munkáltató szerint ({'Csökkenő' if self.sort_descending else 'Növekvő'})", timeout=2)
 
     def action_sort_hol(self) -> None:
@@ -658,6 +707,7 @@ class KozigApp(App):
             self.sort_field = "hol"
             self.sort_descending = False
         self.apply_filter_and_sort()
+        self.highlight_sorted_column()
         self.notify(f"Rendezve Település szerint ({'Csökkenő' if self.sort_descending else 'Növekvő'})", timeout=2)
 
     def action_sort_meddig(self) -> None:
@@ -668,12 +718,14 @@ class KozigApp(App):
             self.sort_field = "meddig"
             self.sort_descending = False
         self.apply_filter_and_sort()
+        self.highlight_sorted_column()
         self.notify(f"Rendezve Határidő szerint ({'Csökkenő' if self.sort_descending else 'Növekvő'})", timeout=2)
 
     def action_toggle_sort_direction(self) -> None:
         """Rendezési irány megfordítása (F5)."""
         self.sort_descending = not self.sort_descending
         self.apply_filter_and_sort()
+        self.highlight_sorted_column()
         self.notify(f"Rendezési irány: {'Csökkenő 🔽' if self.sort_descending else 'Növekvő 🔼'}", timeout=2)
 
     def action_toggle_density(self) -> None:
