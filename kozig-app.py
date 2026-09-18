@@ -17,6 +17,7 @@ from typing import List, Dict, Any, Optional
 
 import aiohttp
 from selectolax.parser import HTMLParser
+from rich.text import Text
 
 from textual.app import App, ComposeResult
 from textual import work, on, events
@@ -348,13 +349,6 @@ class KozigApp(App):
         text-style: bold;
     }
 
-    /* Az aktuálisan rendezett oszlop fejlécének kiemelése */
-    DataTable > .datatable--header .sorted-column {
-        background: #334155;
-        color: #ffffff;
-        text-style: bold;
-    }
-
     DataTable > .datatable--cursor {
         background: #0284c7;
         color: #ffffff;
@@ -484,8 +478,8 @@ class KozigApp(App):
         fixed_total = col_id + col_date + col_city + col_county + (8 if not self.compact_mode else 5)
         remaining = max(24, net_w - fixed_total)
 
-        # A maradék hely elosztása: 55% pozíció, 45% munkáltató
-        col_pos = max(14, int(remaining * 0.55))
+        # A maradék hely elosztása: pozíció szélesebb, munkáltató keskenyebb
+        col_pos = max(14, int(remaining * 0.55) + 8)
         col_emp = max(10, remaining - col_pos)
 
         return {
@@ -517,45 +511,54 @@ class KozigApp(App):
 
         self.highlight_sorted_column()
 
-    def highlight_sorted_column(self) -> None:
-        """Világosabb háttérrel kiemeli az aktuálisan rendezett oszlop fejlécét."""
-        table = self.query_one(DataTable)
+    # Az oszlop kulcs -> fejléc alapszöveg hozzárendelés
+    COLUMN_LABELS = {
+        "col_id": "#",
+        "col_mit": "Pozíció / Megnevezés",
+        "col_kinel": "Munkáltató",
+        "col_hol": "Település",
+        "col_meddig": "Határidő",
+        "col_megye": "Megye / Térség",
+    }
 
-        # Először minden fejléc visszaállítása az alap háttérre.
-        for column_key in ("col_mit", "col_kinel", "col_hol", "col_meddig", "col_megye"):
+    # sort_field -> oszlop kulcs hozzárendelés
+    SORT_FIELD_TO_COL = {
+        "mit": "col_mit",
+        "kinél": "col_kinel",
+        "hol": "col_hol",
+        "meddig": "col_meddig",
+        "megye": "col_megye",
+    }
+
+    def highlight_sorted_column(self) -> None:
+        """Világosabb háttérrel kiemeli az aktuálisan rendezett oszlop fejlécét (Rich Text label)."""
+        table = self.query_one(DataTable)
+        active_col_key = self.SORT_FIELD_TO_COL.get(self.sort_field)
+
+        # Irány jelző a fejléchez
+        arrow = " ▼" if self.sort_descending else " ▲"
+
+        for col_key, base_label in self.COLUMN_LABELS.items():
             try:
-                table.get_column(column_key).label.stylize = None
+                col = table.columns.get(col_key) or table.columns.get(f"{col_key}")
+                if col is None:
+                    # Próbáljuk ColumnKey objektummal is
+                    from textual.widgets._data_table import ColumnKey
+                    col = table.columns.get(ColumnKey(col_key))
+                if col is None:
+                    continue
+                if col_key == active_col_key:
+                    # Kiemelt fejléc: világosabb háttér + nyíl
+                    label = Text(f"{base_label}{arrow}")
+                    label.stylize("bold #f97316")
+                    col.label = label
+                else:
+                    # Normál fejléc
+                    col.label = Text(base_label)
             except Exception:
                 pass
 
-        # Textual verziók között eltérhet a fejléc belső objektumának API-ja,
-        # ezért a biztos megoldás a fejléc cellájának CSS class alapú jelölése.
-        try:
-            header = table.query_one(".datatable--header")
-            for child in header.query(".datatable--header-cell"):
-                child.remove_class("sorted-column")
-        except Exception:
-            pass
-
-        # Az aktuális oszlop fejlécét jelöljük.
-        column_map = {
-            "mit": "col_mit",
-            "kinél": "col_kinel",
-            "hol": "col_hol",
-            "meddig": "col_meddig",
-            "megye": "col_megye",
-        }
-        active_key = column_map.get(self.sort_field)
-        if not active_key:
-            return
-
-        try:
-            header = table.query_one(".datatable--header")
-            for child in header.query(".datatable--header-cell"):
-                if getattr(child, "column_key", None) == active_key:
-                    child.add_class("sorted-column")
-        except Exception:
-            pass
+        table.refresh()
 
     def on_resize(self, event: events.Resize) -> None:
         """Ablak átméretezésekor újraszámolja az oszlopszélességeket a kilógás megakadályozására."""
@@ -638,33 +641,40 @@ class KozigApp(App):
         self.row_index_map = []
         w = self.current_col_widths or self.compute_column_widths(self.size.width)
 
+        # Melyik oszlop a rendezett -> annak celláit világosabb háttérrel jelöljük
+        active_col_key = self.SORT_FIELD_TO_COL.get(self.sort_field)
+        sorted_bg_style = "#f97316"  # narancs betűszín a rendezett oszlop celláira
+
         for idx, job in enumerate(self.displayed_jobs, 1):
             row_key = f"job_{idx}"
-            pos_text = truncate_str(job.get("mit", ""), w["mit"])
-            emp_text = truncate_str(job.get("kinél", ""), w["kinél"])
-            city_text = truncate_str(job.get("hol", ""), w["hol"])
-            date_text = truncate_str(job.get("meddig", ""), w["meddig"])
 
+            # Adatok előkészítése
+            raw = {
+                "col_id": str(idx),
+                "col_mit": truncate_str(job.get("mit", ""), w["mit"]),
+                "col_kinel": truncate_str(job.get("kinél", ""), w["kinél"]),
+                "col_hol": truncate_str(job.get("hol", ""), w["hol"]),
+                "col_meddig": truncate_str(job.get("meddig", ""), w["meddig"]),
+            }
             if w.get("show_megye", True):
-                county_text = truncate_str(job.get("megye", ""), w["megye"])
-                table.add_row(
-                    str(idx),
-                    pos_text,
-                    emp_text,
-                    city_text,
-                    date_text,
-                    county_text,
-                    key=row_key
-                )
-            else:
-                table.add_row(
-                    str(idx),
-                    pos_text,
-                    emp_text,
-                    city_text,
-                    date_text,
-                    key=row_key
-                )
+                raw["col_megye"] = truncate_str(job.get("megye", ""), w["megye"])
+
+            # Cellák összeállítása: a rendezett oszlop celláit Rich Text-tel színezzük
+            cells = []
+            col_keys = ["col_id", "col_mit", "col_kinel", "col_hol", "col_meddig"]
+            if w.get("show_megye", True):
+                col_keys.append("col_megye")
+
+            for ck in col_keys:
+                cell_text = raw.get(ck, "")
+                if ck == active_col_key:
+                    t = Text(cell_text)
+                    t.stylize(sorted_bg_style)
+                    cells.append(t)
+                else:
+                    cells.append(cell_text)
+
+            table.add_row(*cells, key=row_key)
             self.row_index_map.append(job)
 
         if self.displayed_jobs:
