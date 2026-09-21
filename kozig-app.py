@@ -873,12 +873,15 @@ class KozigApp(App):
         """Háttérfolyamat az adatok webről történő letöltéséhez."""
         loading_bar = self.query_one("#loading-bar", Static)
         loading_bar.add_class("visible")
-        self.notify("Álláshirdetések letöltése folyamatban...", title="Letöltés", timeout=3)
+        self.notify("Álláshirdetések letöltése megkezdődött...", title="Letöltés", timeout=3)
 
         scraped_results = []
         try:
-            for code, name in DEFAULT_COUNTIES.items():
-                loading_bar.update(f"⏳ Letöltés: {name}...")
+            total_counties = len(DEFAULT_COUNTIES)
+            for idx, (code, name) in enumerate(DEFAULT_COUNTIES.items(), 1):
+                msg = f"⏳ Letöltés ({idx}/{total_counties}): {name}..."
+                loading_bar.update(msg)
+                self.notify(msg, title="Folyamatban", timeout=2)
                 county_jobs = await scrape_county_jobs(code, name)
                 scraped_results.extend(county_jobs)
 
