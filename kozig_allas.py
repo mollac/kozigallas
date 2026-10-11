@@ -1,6 +1,6 @@
 import aiohttp
 import asyncio
-from selectolax.parser import HTMLParser
+from selectolax.lexbor import LexborHTMLParser
 import xlsxwriter
 from tqdm.asyncio import tqdm
 jobUrl = "https://kozszolgallas.ksz.gov.hu/JobAd/Info/"
@@ -35,7 +35,7 @@ async def get_page(session, page_num, county_code):
             if response.status != 200:
                 return None, response.status
             text = await response.text()
-            return HTMLParser(text), response.status
+            return LexborHTMLParser(text), response.status
     except aiohttp.ClientError:
         return None, 0
 
